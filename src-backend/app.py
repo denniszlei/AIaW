@@ -1,23 +1,48 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile, Form, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import aiohttp
 from typing import Optional, Dict, Any
 from fastapi.staticfiles import StaticFiles
 from llama_parse import LlamaParse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 import os
 
 http_client = None
+ACCESS_CODES = os.environ.get('ACCESS_CODE', '').split(',')
+ACCESS_CODES = [code.strip() for code in ACCESS_CODES if code.strip()]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print("--- Environment Variables ---")
+    for key, value in os.environ.items():
+        print(f"{key}: {value}")
+    print("---------------------------")
     global http_client
     http_client = aiohttp.ClientSession()
     yield
     await http_client.close()
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=os.urandom(24))
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not ACCESS_CODES:
+            return await call_next(request)
+
+        if request.url.path.startswith('/api/auth') or request.url.path.startswith('/static') or request.url.path == '/':
+            return await call_next(request)
+
+        if not request.session.get('access_code') or request.session.get('access_code') not in ACCESS_CODES:
+            return JSONResponse(status_code=401, content={'detail': 'Not authenticated'})
+
+        response = await call_next(request)
+        return response
+
+app.add_middleware(AuthMiddleware)
 
 ALLOWED_PREFIXES = [
     'https://lobehub.search1api.com/api/search',
@@ -114,6 +139,32 @@ async def searxng(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 app.mount('/', StaticFiles(directory='static', html=True), name='static')
+
+class AccessCode(BaseModel):
+    code: str
+
+@app.post("/api/auth/verify")
+async def verify_access_code(access_code: AccessCode, request: Request):
+    if not ACCESS_CODES:
+        return {"status": "success"}
+    if access_code.code in ACCESS_CODES:
+        request.session["access_code"] = access_code.code
+        return {"status": "success"}
+    else:
+        return JSONResponse(status_code=401, content={"status": "error", "message": "Invalid access code"})
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    if not ACCESS_CODES:
+        return {"authenticated": True}
+    if request.session.get('access_code') in ACCESS_CODES:
+        return {"authenticated": True}
+    return {"authenticated": False}
+
+@app.post("/api/auth/logout")
+async def logout(request: Request):
+    request.session.pop("access_code", None)
+    return {"status": "success"}
 
 @app.exception_handler(404)
 async def return_index(request: Request, exc: HTTPException):

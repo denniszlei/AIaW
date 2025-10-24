@@ -1,5 +1,6 @@
 <template>
   <router-view />
+  <AccessCodeDialog />
 </template>
 
 <script setup lang="ts">
@@ -10,6 +11,8 @@ import { useSetTheme } from './composables/set-theme'
 import { useSubscriptionNotify } from './composables/subscription-notify'
 import { onMounted } from 'vue'
 import { checkUpdate, ready } from './utils/update'
+import AccessCodeDialog from './components/AccessCodeDialog.vue'
+import { useAccessCode } from './composables/access-code'
 
 defineOptions({
   name: 'App'
@@ -19,6 +22,7 @@ useSetTheme()
 useLoginDialogs()
 useFirstVisit()
 useSubscriptionNotify()
+useAccessCode()
 
 const router = useRouter()
 router.afterEach(to => {
