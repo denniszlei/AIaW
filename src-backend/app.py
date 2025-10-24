@@ -9,6 +9,13 @@ from llama_parse import LlamaParse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import os
+import sys
+
+print("--- Environment Variables ---")
+for key, value in os.environ.items():
+    print(f"{key}: {value}")
+print("---------------------------")
+sys.stdout.flush()
 
 http_client = None
 ACCESS_CODES = os.environ.get('ACCESS_CODE', '').split(',')
@@ -24,10 +31,6 @@ if not SECRET_KEY:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("--- Environment Variables ---")
-    for key, value in os.environ.items():
-        print(f"{key}: {value}")
-    print("---------------------------")
     global http_client
     http_client = aiohttp.ClientSession()
     yield
@@ -152,8 +155,6 @@ async def searxng(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-app.mount('/', StaticFiles(directory='static', html=True), name='static')
-
 class AccessCode(BaseModel):
     code: str
 
@@ -179,6 +180,8 @@ async def auth_status(request: Request):
 async def logout(request: Request):
     request.session.pop("access_code", None)
     return {"status": "success"}
+
+app.mount('/', StaticFiles(directory='static', html=True), name='static')
 
 @app.exception_handler(404)
 async def return_index(request: Request, exc: HTTPException):
