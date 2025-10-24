@@ -13,6 +13,14 @@ import os
 http_client = None
 ACCESS_CODES = os.environ.get('ACCESS_CODE', '').split(',')
 ACCESS_CODES = [code.strip() for code in ACCESS_CODES if code.strip()]
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    SECRET_KEY = os.urandom(24).hex()
+    print("--- WARNING ---")
+    print("SECRET_KEY environment variable not set. Using a temporary secret key.")
+    print("For production, please set a strong, persistent SECRET_KEY.")
+    print("---------------")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,23 +34,29 @@ async def lifespan(app: FastAPI):
     await http_client.close()
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=os.urandom(24))
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Pass through if no access codes are configured
         if not ACCESS_CODES:
             return await call_next(request)
 
-        if request.url.path.startswith('/api/auth') or request.url.path.startswith('/static') or request.url.path == '/':
-            return await call_next(request)
+        # List of paths that are protected by authentication
+        protected_paths = ['/cors', '/doc-parse', '/searxng']
+        is_protected = any(request.url.path.startswith(p) for p in protected_paths)
 
-        if not request.session.get('access_code') or request.session.get('access_code') not in ACCESS_CODES:
-            return JSONResponse(status_code=401, content={'detail': 'Not authenticated'})
+        if is_protected:
+            # Session is only accessed here, for protected routes
+            if not request.session.get('access_code') or request.session.get('access_code') not in ACCESS_CODES:
+                return JSONResponse(status_code=401, content={'detail': 'Not authenticated'})
 
         response = await call_next(request)
         return response
 
+# IMPORTANT: Middleware is added in reverse order of execution.
+# AuthMiddleware will run AFTER SessionMiddleware.
 app.add_middleware(AuthMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 ALLOWED_PREFIXES = [
     'https://lobehub.search1api.com/api/search',
