@@ -1,5 +1,4 @@
 import { ref, onMounted } from 'vue'
-import { api } from 'src/boot/axios'
 
 const isAuthenticated = ref(false)
 const isDialogVisible = ref(false)
@@ -7,8 +6,9 @@ const isDialogVisible = ref(false)
 export function useAccessCode() {
   async function checkAuthStatus() {
     try {
-      const response = await api.get('/api/auth/status')
-      isAuthenticated.value = response.data.authenticated
+      const response = await fetch('/api/auth/status')
+      const data = await response.json()
+      isAuthenticated.value = data.authenticated
       if (!isAuthenticated.value) {
         isDialogVisible.value = true
       }
@@ -20,8 +20,15 @@ export function useAccessCode() {
 
   async function verifyAccessCode(code: string) {
     try {
-      const response = await api.post('/api/auth/verify', { code })
-      if (response.data.status === 'success') {
+      const response = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code })
+      })
+      const data = await response.json()
+      if (data.status === 'success') {
         isAuthenticated.value = true
         isDialogVisible.value = false
       } else {
