@@ -4,3 +4,5 @@ aiohttp==3.11.7
 python-multipart==0.0.18
 llama-index-core==0.12.41
 llama-parse==0.5.15
+itsdangerous==2.2.0
+pydantic==2.8.2
